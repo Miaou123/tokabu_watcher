@@ -1,4 +1,4 @@
-// src/utils/formatters.ts
+// src/utils/formatters.ts - FIXED VERSION
 import { WhaleAlert, WhaleAlertWebSocketMessage } from '../types';
 
 export class MessageFormatter {
@@ -41,9 +41,13 @@ export class MessageFormatter {
   }
 
   /**
-   * Shorten wallet address for display
+   * Shorten wallet address for display - FIXED to handle undefined
    */
-  static shortenAddress(address: string): string {
+  static shortenAddress(address: string | undefined | null): string {
+    if (!address || typeof address !== 'string') {
+      return 'Unknown';
+    }
+    
     if (address.length <= 10) return address;
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
@@ -136,6 +140,33 @@ export class MessageFormatter {
   }
 
   /**
+   * Format Hyperliquid trade for Twitter - FIXED VERSION
+   */
+  static formatHyperliquidAlert(alert: WhaleAlert): string {
+    const leverageEmoji = this.getLeverageEmoji(alert.leverage || 1);
+    const tokenEmoji = this.getTokenEmoji(alert.symbol);
+    
+    let message = `${leverageEmoji} HIGH LEVERAGE ALERT!\n\n`;
+    message += `${alert.leverage || 1}x ${alert.side?.toUpperCase() || 'LONG'} ${tokenEmoji}${alert.symbol}\n`;
+    message += `Size: ${this.formatUSD(alert.value_usd)}\n`;
+    message += `Trader: ${this.shortenAddress(alert.from)}\n\n`;
+    message += `#Hyperliquid #Leverage #${alert.symbol}`;
+    
+    return message;
+  }
+
+  /**
+   * Get leverage emoji based on leverage amount
+   */
+  static getLeverageEmoji(leverage: number): string {
+    if (leverage >= 50) return '🚨🚨🚨';
+    if (leverage >= 40) return '🚨🚨';
+    if (leverage >= 30) return '🚨';
+    if (leverage >= 20) return '⚡';
+    return '📈';
+  }
+
+  /**
    * Get alert emojis based on value (matching official Whale Alert pattern)
    */
   private static getAlertEmojis(valueUsd: number): string {
@@ -168,26 +199,13 @@ export class MessageFormatter {
   }
 
   /**
-   * Get additional context for Solana ecosystem tokens
-   */
-  private static getSolanaContext(symbol: string): string {
-    const solanaTokens: { [key: string]: string } = {
-      'SOL': '• Native Solana token\n',
-      'RAY': '• Raydium DEX token\n',
-      'BONK': '• Solana meme coin leader\n',
-      'WIF': '• dogwifhat meme token\n',
-      'SRM': '• Serum DEX token\n',
-      'ORCA': '• Orca DEX token\n',
-      'GMT': '• STEPN move-to-earn\n',
-      'ATLAS': '• Star Atlas gaming\n'
-    };
-    return solanaTokens[symbol.toUpperCase()] || '';
-  }
-
-  /**
    * Format entity name (exchange or wallet address)
    */
-  private static formatEntity(entity: string): string {
+  private static formatEntity(entity: string | undefined | null): string {
+    if (!entity || typeof entity !== 'string') {
+      return 'Unknown';
+    }
+    
     // If it's a known exchange/entity name, capitalize it
     const knownEntities = [
       'binance', 'coinbase', 'kraken', 'huobi', 'okex', 'kucoin', 
@@ -223,21 +241,6 @@ export class MessageFormatter {
       `${data.tokenIn} → ${data.tokenOut}\n` +
       `Platform: ${data.platform}\n\n` +
       `#DeFi #Swap #${data.tokenIn} #${data.tokenOut}`;
-    
-    return message;
-  }
-
-  /**
-   * Format Hyperliquid trade for Twitter
-   */
-  static formatHyperliquidAlert(data: any): string {
-    const leverageEmoji = data.leverage >= 50 ? '🚨' : data.leverage >= 30 ? '⚡' : '📈';
-    
-    const message = `${leverageEmoji} HIGH LEVERAGE ALERT!\n\n` +
-      `${data.leverage}x ${data.side.toUpperCase()} ${data.symbol}\n` +
-      `Size: ${this.formatUSD(data.value_usd)}\n` +
-      `Trader: ${this.shortenAddress(data.user)}\n\n` +
-      `#Hyperliquid #Leverage #${data.symbol}`;
     
     return message;
   }

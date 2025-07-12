@@ -1,4 +1,4 @@
-// src/types/index.ts
+// src/types/index.ts - UPDATED WITH CORRECT HYPERLIQUID API STRUCTURE
 export interface WhaleAlert {
   id: string;
   type: 'whale_alert' | 'swap' | 'hyperliquid_trade' | 'transfer' | 'mint' | 'burn';
@@ -116,38 +116,69 @@ export interface HyperliquidTrade {
   timestamp: number;
 }
 
-// NEW HYPERLIQUID TYPES
+// UPDATED HYPERLIQUID TYPES TO MATCH ACTUAL API RESPONSE
 export interface LeaderboardEntry {
+  ethAddress?: string;
   user?: string;
   address?: string;
+  accountValue?: string;
+  windowPerformances?: any[];
   pnl?: number;
-  accountValue?: number;
   rank?: number;
   [key: string]: any;
 }
 
 export interface LeaderboardResponse {
+  leaderboardRows?: LeaderboardEntry[];
   leaderboard?: LeaderboardEntry[];
   [key: string]: any;
 }
 
+// CORRECTED: This is the actual structure from Hyperliquid API
 export interface HyperliquidPosition {
   coin: string;
-  szi: string;
-  positionValue: string;
-  marginUsed: string;
-  unrealizedPnl: string;
-  entryPx: string;
-  markPx: string;
-  liquidationPx: string;
+  szi: string;              // Position size (can be negative for shorts)
+  positionValue: string;    // USD value of position
+  marginUsed: string;       // Margin used for this position
+  unrealizedPnl: string;    // Unrealized PnL
+  entryPx: string;          // Entry price
+  markPx?: string;          // Mark price
+  liquidationPx?: string;   // Liquidation price
+  leverage?: {              // Leverage object (new format)
+    value: number;
+    type: string;
+    rawUsd?: string;
+  };
+  cumFunding?: {
+    allTime: string;
+    sinceChange: string;
+    sinceOpen: string;
+  };
+  returnOnEquity?: string;
+  maxLeverage?: number;
 }
 
+// This is what the actual API returns
 export interface HyperliquidApiResponse {
-  assetPositions?: HyperliquidPosition[];
+  assetPositions?: Array<{
+    position: HyperliquidPosition;
+    type: string;
+  }>;
   marginSummary?: {
     accountValue: string;
     totalMarginUsed: string;
+    totalNtlPos: string;
+    totalRawUsd: string;
   };
+  crossMarginSummary?: {
+    accountValue: string;
+    totalMarginUsed: string;
+    totalNtlPos: string;
+    totalRawUsd: string;
+  };
+  crossMaintenanceMarginUsed?: string;
+  withdrawable?: string;
+  time?: number;
   [key: string]: any;
 }
 
