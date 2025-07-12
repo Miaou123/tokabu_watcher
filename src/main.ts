@@ -1,8 +1,9 @@
-// src/main.ts - Updated with Hyperliquid Integration
+// src/main.ts - Updated with Hyperliquid and MobysProcessor Integration
 import { config, validateConfig } from './config/config';
 import { logger } from './utils/logger';
 import { WhaleAlertProcessor } from './processors/WhaleAlertProcessor';
 import { HyperliquidProcessor } from './processors/HyperliquidProcessor';
+import { MobysProcessor } from './processors/MobysProcessor';
 import { AlertManager } from './services/AlertManager';
 import { TwitterService } from './services/TwitterService';
 
@@ -10,6 +11,7 @@ class WhaleBot {
   private isRunning = false;
   private whaleAlertProcessor: WhaleAlertProcessor | null = null;
   private hyperliquidProcessor: HyperliquidProcessor | null = null;
+  private mobysProcessor: MobysProcessor | null = null;
   private alertManager: AlertManager | null = null;
   private twitterService: TwitterService | null = null;
   private useTwitter = false;
@@ -41,7 +43,7 @@ class WhaleBot {
 
   async start(): Promise<void> {
     try {
-      logger.info('🐋 Starting Whale Bot with Hyperliquid Support...');
+      logger.info('🐋 Starting Whale Bot with Hyperliquid & MobysScreener Support...');
       
       // Validate configuration
       validateConfig();
@@ -67,6 +69,22 @@ class WhaleBot {
 
       this.alertManager = new AlertManager(tweetSender);
       logger.success('✅ Alert Manager initialized');
+
+      // Initialize MobysProcessor (AssetDash API)
+      this.mobysProcessor = new MobysProcessor(
+        this.alertManager.processAlert.bind(this.alertManager)
+      );
+
+      logger.info('🔌 Testing MobysScreener connection...');
+      const mobysTestResult = await this.mobysProcessor.test();
+      
+      if (mobysTestResult) {
+        logger.success('✅ MobysScreener connection test passed');
+        this.mobysProcessor.startPolling();
+        logger.success('🚀 MobysScreener whale monitoring started');
+      } else {
+        logger.error('❌ MobysScreener connection test failed');
+      }
 
       // Initialize Whale Alert Processor
       if (config.whaleAlert.apiKey) {
@@ -136,6 +154,12 @@ class WhaleBot {
     logger.info('📊 Bot Status:');
     logger.info(`   • Mode: ${this.useTwitter ? '🐦 Twitter' : '📝 Mock'}`);
     
+    if (this.mobysProcessor) {
+      const mobysStatus = this.mobysProcessor.getStatus();
+      logger.info(`   • MobysScreener: ${mobysStatus.running ? '🟢 Running' : '🔴 Stopped'}`);
+      logger.info(`   • Poll Interval: ${mobysStatus.pollInterval}s`);
+    }
+    
     if (this.whaleAlertProcessor) {
       const waStatus = this.whaleAlertProcessor.getStatus();
       logger.info(`   • Whale Alert: ${waStatus.connected ? '🟢 Connected' : '🔴 Disconnected'}`);
@@ -167,7 +191,7 @@ class WhaleBot {
         return;
       }
       
-      logger.debug('💓 Bot heartbeat - monitoring Hyperliquid 30x+ longs');
+      logger.debug('💓 Bot heartbeat - monitoring whale transactions & Hyperliquid 30x+ longs');
     }, 5 * 60 * 1000);
 
     const statusInterval = setInterval(() => {
@@ -183,6 +207,10 @@ class WhaleBot {
     logger.info('🛑 Stopping Whale Bot...');
     this.isRunning = false;
     
+    if (this.mobysProcessor) {
+      this.mobysProcessor.stop();
+    }
+
     if (this.whaleAlertProcessor) {
       this.whaleAlertProcessor.close();
     }
@@ -207,6 +235,7 @@ class WhaleBot {
     return {
       running: this.isRunning,
       mode: this.useTwitter ? 'twitter' : 'mock',
+      mobysScreener: this.mobysProcessor?.getStatus(),
       whaleAlert: this.whaleAlertProcessor?.getStatus(),
       hyperliquid: this.hyperliquidProcessor?.getStatus(),
       twitter: this.twitterService?.getStatus(),
@@ -215,6 +244,16 @@ class WhaleBot {
   }
 
   // Testing methods
+  async testMobysScreener(): Promise<void> {
+    if (!this.mobysProcessor) {
+      this.mobysProcessor = new MobysProcessor();
+    }
+
+    logger.info('🧪 Testing MobysScreener monitoring...');
+    const result = await this.mobysProcessor.test();
+    logger.info(`Test result: ${result ? '✅ Success' : '❌ Failed'}`);
+  }
+
   async testHyperliquid(): Promise<void> {
     if (!this.hyperliquidProcessor) {
       this.hyperliquidProcessor = new HyperliquidProcessor();
@@ -234,6 +273,13 @@ async function runCommand() {
   const bot = new WhaleBot();
 
   switch (command) {
+    case 'test-mobys':
+    case 'test-mobyscreener':
+      validateConfig();
+      await bot.testMobysScreener();
+      process.exit(0);
+      break;
+
     case 'test-hyperliquid':
       validateConfig();
       await bot.testHyperliquid();
@@ -242,7 +288,7 @@ async function runCommand() {
 
     case 'test-whale-alert':
       validateConfig();
-      logger.info('Use test-hyperliquid for Hyperliquid-specific testing');
+      logger.info('Use test-hyperliquid or test-mobys for specific testing');
       process.exit(0);
       break;
       
@@ -253,25 +299,29 @@ async function runCommand() {
       break;
       
     case 'help':
-      console.log('Whale Bot - Hyperliquid 30x+ Long Position Monitor (Leaderboard-Based)');
+      console.log('Whale Bot - Multi-Source Whale Transaction Monitor');
       console.log('');
       console.log('Available commands:');
       console.log('  npm run dev                     - Start bot in mock mode');
       console.log('  npm run dev -- --twitter        - Start bot with real Twitter posting');
+      console.log('  npm run dev test-mobys          - Test MobysScreener API connection');
       console.log('  npm run dev test-hyperliquid    - Test Hyperliquid leaderboard monitoring');
       console.log('  npm run dev status              - Show bot status');
       console.log('  npm run dev help                - Show this help');
       console.log('');
+      console.log('Data Sources:');
+      console.log('  1. MobysScreener (AssetDash API) - All whale transactions');
+      console.log('  2. Hyperliquid - 30x+ leverage long positions over $100k');
+      console.log('  3. Whale Alert - General whale movements (optional)');
+      console.log('');
       console.log('How it works:');
-      console.log('  1. Fetches Hyperliquid leaderboard for top trader addresses');
-      console.log('  2. Monitors their positions every 30 seconds via Hyperliquid API');  
-      console.log('  3. Alerts on new 30x+ leverage long positions over $100k');
+      console.log('  • MobysScreener: Polls every 60 seconds for new whale transactions');
+      console.log('  • Hyperliquid: Real-time WebSocket monitoring of top trader positions');
+      console.log('  • Combines all sources and posts to Twitter with rate limiting');
       console.log('');
       console.log('Requirements:');
-      console.log('  • Internet connection to access Hyperliquid APIs');
-      console.log('  • WHALE_ALERT_API_KEY in .env (optional, for additional whale alerts)');
-      console.log('');
-      console.log('Focus: 30x+ leverage long positions over $100k on Hyperliquid only');
+      console.log('  • Internet connection to access APIs');
+      console.log('  • WHALE_ALERT_API_KEY in .env (optional)');
       process.exit(0);
       break;
       

@@ -46,7 +46,7 @@ export class HyperliquidProcessor {
   private topAddresses = new Set<string>();
   private leaderboardUpdateInterval: NodeJS.Timeout | null = null;
   private readonly LEADERBOARD_UPDATE_INTERVAL = 60 * 60 * 1000; // 1 hour
-  private readonly TOP_TRADERS_COUNT = 1000;
+  private readonly TOP_TRADERS_COUNT = 100;
 
   // Position tracking
   private userPositions = new Map<string, Map<string, HyperliquidPosition>>();

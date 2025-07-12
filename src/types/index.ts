@@ -200,6 +200,61 @@ export interface HyperliquidProcessorStatus {
   };
 }
 
+export interface AssetDashTransaction {
+  id: string;
+  created: string;
+  timestamp: string;
+  transaction_type: 'buy' | 'sell';
+  swap_token_id: string;
+  swap_whalewatch_list: {
+    id: string;
+    identifier: string;
+    name: string;
+    logo_url: string;
+    swap_token: {
+      symbol: string;
+      name: string;
+      token_address: string;
+      platform: string;
+      logo_url: string;
+      decimals: number;
+      is_pumpfun: boolean;
+      rugcheck_status: string;
+      [key: string]: any;
+    };
+    [key: string]: any;
+  };
+  swap_token: {
+    id: string;
+    symbol: string;
+    name: string;
+    token_address: string;
+    platform: string;
+    logo_url: string;
+    decimals: number;
+    is_pumpfun: boolean;
+    rugcheck_status: string;
+    [key: string]: any;
+  };
+  trade_size: 'low' | 'medium' | 'high';
+  trade_amount_rounded: number;
+  token_market_cap: number;
+  is_token_first_seen: boolean;
+  win_rate: number;
+  [key: string]: any;
+}
+
+export interface AssetDashResponse {
+  transactions: AssetDashTransaction[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    has_more: boolean;
+  };
+  [key: string]: any; // Allow additional fields
+}
+
 // Axios response types
 export interface AxiosResponse<T = any> {
   data: T;
