@@ -1,13 +1,15 @@
-// src/main.ts
+// src/main.ts - Updated with Hyperliquid Integration
 import { config, validateConfig } from './config/config';
 import { logger } from './utils/logger';
 import { WhaleAlertProcessor } from './processors/WhaleAlertProcessor';
+import { HyperliquidProcessor } from './processors/HyperliquidProcessor';
 import { AlertManager } from './services/AlertManager';
 import { TwitterService } from './services/TwitterService';
 
 class WhaleBot {
   private isRunning = false;
   private whaleAlertProcessor: WhaleAlertProcessor | null = null;
+  private hyperliquidProcessor: HyperliquidProcessor | null = null;
   private alertManager: AlertManager | null = null;
   private twitterService: TwitterService | null = null;
   private useTwitter = false;
@@ -39,19 +41,18 @@ class WhaleBot {
 
   async start(): Promise<void> {
     try {
-      logger.info('🐋 Starting Whale Bot...');
+      logger.info('🐋 Starting Whale Bot with Hyperliquid Support...');
       
       // Validate configuration
       validateConfig();
       logger.info('✅ Configuration validated');
 
-      // Ask user if they want to use Twitter
+      // Check for Twitter mode
       const useTwitter = process.argv.includes('--twitter') || process.argv.includes('--with-twitter');
       this.useTwitter = useTwitter;
 
       if (useTwitter) {
         logger.info('🐦 Twitter mode enabled');
-        // Initialize Twitter Service
         this.twitterService = new TwitterService();
         await this.twitterService.initialize();
         logger.success('✅ Twitter service initialized');
@@ -59,7 +60,7 @@ class WhaleBot {
         logger.info('📝 Mock mode enabled (use --twitter flag for real tweets)');
       }
 
-      // Initialize Alert Manager with appropriate tweet sender
+      // Initialize Alert Manager
       const tweetSender = this.useTwitter 
         ? this.twitterService!.postTweet.bind(this.twitterService!)
         : this.mockTweetSender.bind(this);
@@ -68,27 +69,39 @@ class WhaleBot {
       logger.success('✅ Alert Manager initialized');
 
       // Initialize Whale Alert Processor
-      this.whaleAlertProcessor = new WhaleAlertProcessor(
-        this.alertManager.processAlert.bind(this.alertManager)
-      );
-
-      // Test Whale Alert connection
       if (config.whaleAlert.apiKey) {
+        this.whaleAlertProcessor = new WhaleAlertProcessor(
+          this.alertManager.processAlert.bind(this.alertManager)
+        );
+
         logger.info('🔌 Testing Whale Alert connection...');
         const testResult = await this.whaleAlertProcessor.test();
         
         if (testResult) {
           logger.success('✅ Whale Alert connection test passed');
-          
-          // Connect to Whale Alert
           await this.whaleAlertProcessor.connect();
         } else {
           logger.error('❌ Whale Alert connection test failed');
-          logger.warn('Bot will continue but Whale Alert features will not work');
         }
       } else {
         logger.warn('⚠️  No Whale Alert API key configured');
-        logger.info('Get your API key from: https://developer.whale-alert.io/');
+      }
+
+      // Initialize Hyperliquid Processor (Leaderboard + Direct API)
+      this.hyperliquidProcessor = new HyperliquidProcessor(
+        this.alertManager.processAlert.bind(this.alertManager)
+      );
+
+      logger.info('⚡ Testing Hyperliquid leaderboard monitoring...');
+      const hyperliquidTest = await this.hyperliquidProcessor.test();
+      
+      if (hyperliquidTest) {
+        logger.success('✅ Hyperliquid leaderboard monitoring test passed');
+        await this.hyperliquidProcessor.startMonitoring();
+        logger.success('🚀 Hyperliquid 30x+ long monitoring started');
+      } else {
+        logger.error('❌ Hyperliquid leaderboard monitoring test failed');
+        logger.info('Check if leaderboard endpoint is accessible: https://stats-data.hyperliquid.xyz/Mainnet/leaderboard');
       }
       
       this.isRunning = true;
@@ -107,7 +120,7 @@ class WhaleBot {
   }
 
   /**
-   * Mock tweet sender for testing (used when --twitter flag is not provided)
+   * Mock tweet sender for testing
    */
   private async mockTweetSender(message: string): Promise<boolean> {
     logger.info('📝 MOCK TWEET:');
@@ -115,16 +128,25 @@ class WhaleBot {
     logger.info(message);
     logger.info('─'.repeat(50));
     
-    // Simulate tweet posting delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return true; // Always succeed for testing
+    return true;
   }
 
   private logStatus(): void {
     logger.info('📊 Bot Status:');
     logger.info(`   • Mode: ${this.useTwitter ? '🐦 Twitter' : '📝 Mock'}`);
-    logger.info(`   • Whale Alert: ${this.whaleAlertProcessor?.getStatus().connected ? '🟢 Connected' : '🔴 Disconnected'}`);
+    
+    if (this.whaleAlertProcessor) {
+      const waStatus = this.whaleAlertProcessor.getStatus();
+      logger.info(`   • Whale Alert: ${waStatus.connected ? '🟢 Connected' : '🔴 Disconnected'}`);
+    }
+    
+    if (this.hyperliquidProcessor) {
+      const hlStatus = this.hyperliquidProcessor.getStatus();
+      logger.info(`   • Hyperliquid: ${hlStatus.running ? '🟢 Running' : '🔴 Stopped'}`);
+      logger.info(`   • Monitored Addresses: ${hlStatus.monitoredAddresses}`);
+      logger.info(`   • Criteria: ${hlStatus.criteria.minLeverage}x leverage, ${hlStatus.criteria.minValue}, ${hlStatus.criteria.side}s only`);
+    }
     
     if (this.twitterService) {
       const twitterStatus = this.twitterService.getStatus();
@@ -135,9 +157,6 @@ class WhaleBot {
       const status = this.alertManager.getStatus();
       logger.info(`   • Queue Length: ${status.queueLength}`);
       logger.info(`   • Can Tweet: ${status.canTweet ? '✅' : '❌'}`);
-      if (status.nextTweetTime) {
-        logger.info(`   • Next Tweet: ${status.nextTweetTime.toISOString()}`);
-      }
     }
   }
 
@@ -148,16 +167,9 @@ class WhaleBot {
         return;
       }
       
-      // Health check log every 5 minutes
-      logger.debug('💓 Bot heartbeat - system running normally');
-      
-      // Log status every 30 minutes
-      if (Date.now() % (30 * 60 * 1000) < 10000) {
-        this.logStatus();
-      }
+      logger.debug('💓 Bot heartbeat - monitoring Hyperliquid 30x+ longs');
     }, 5 * 60 * 1000);
 
-    // Log status immediately and then every 15 minutes
     const statusInterval = setInterval(() => {
       if (!this.isRunning) {
         clearInterval(statusInterval);
@@ -171,16 +183,18 @@ class WhaleBot {
     logger.info('🛑 Stopping Whale Bot...');
     this.isRunning = false;
     
-    // Close connections
     if (this.whaleAlertProcessor) {
       this.whaleAlertProcessor.close();
+    }
+
+    if (this.hyperliquidProcessor) {
+      this.hyperliquidProcessor.stop();
     }
 
     if (this.twitterService) {
       await this.twitterService.close();
     }
     
-    // Clear any pending alerts
     if (this.alertManager) {
       this.alertManager.clearQueue();
     }
@@ -189,59 +203,30 @@ class WhaleBot {
     process.exit(0);
   }
 
-  /**
-   * Get current bot status
-   */
   getStatus(): any {
     return {
       running: this.isRunning,
       mode: this.useTwitter ? 'twitter' : 'mock',
       whaleAlert: this.whaleAlertProcessor?.getStatus(),
+      hyperliquid: this.hyperliquidProcessor?.getStatus(),
       twitter: this.twitterService?.getStatus(),
-      alertManager: this.alertManager?.getStatus(),
-      config: {
-        minValue: config.whaleAlert.minValue,
-        tweetRateLimit: config.twitter.rateLimitMinutes
-      }
+      alertManager: this.alertManager?.getStatus()
     };
   }
 
-  /**
-   * Manual testing methods
-   */
-  async testWhaleAlert(): Promise<void> {
-    if (!this.whaleAlertProcessor) {
-      logger.error('Whale Alert processor not initialized');
-      return;
+  // Testing methods
+  async testHyperliquid(): Promise<void> {
+    if (!this.hyperliquidProcessor) {
+      this.hyperliquidProcessor = new HyperliquidProcessor();
     }
 
-    logger.info('🧪 Testing Whale Alert connection...');
-    const result = await this.whaleAlertProcessor.test();
+    logger.info('🧪 Testing Hyperliquid monitoring...');
+    const result = await this.hyperliquidProcessor.test();
     logger.info(`Test result: ${result ? '✅ Success' : '❌ Failed'}`);
-  }
-
-  async testTwitter(): Promise<void> {
-    if (!this.twitterService) {
-      this.twitterService = new TwitterService();
-    }
-
-    logger.info('🧪 Testing Twitter service...');
-    const result = await this.twitterService.test();
-    logger.info(`Test result: ${result ? '✅ Success' : '❌ Failed'}`);
-  }
-
-  async processAlertQueue(): Promise<void> {
-    if (!this.alertManager) {
-      logger.error('Alert manager not initialized');
-      return;
-    }
-
-    logger.info('🔄 Processing alert queue manually...');
-    await this.alertManager.processQueue();
   }
 }
 
-// CLI commands for testing
+// CLI commands
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -249,14 +234,15 @@ async function runCommand() {
   const bot = new WhaleBot();
 
   switch (command) {
-    case 'test-whale-alert':
+    case 'test-hyperliquid':
       validateConfig();
-      await bot.testWhaleAlert();
+      await bot.testHyperliquid();
       process.exit(0);
       break;
 
-    case 'test-twitter':
-      await bot.testTwitter();
+    case 'test-whale-alert':
+      validateConfig();
+      logger.info('Use test-hyperliquid for Hyperliquid-specific testing');
       process.exit(0);
       break;
       
@@ -267,24 +253,34 @@ async function runCommand() {
       break;
       
     case 'help':
+      console.log('Whale Bot - Hyperliquid 30x+ Long Position Monitor (Leaderboard-Based)');
+      console.log('');
       console.log('Available commands:');
       console.log('  npm run dev                     - Start bot in mock mode');
       console.log('  npm run dev -- --twitter        - Start bot with real Twitter posting');
-      console.log('  npm run dev test-whale-alert    - Test Whale Alert connection');
-      console.log('  npm run dev test-twitter        - Test Twitter connection');
+      console.log('  npm run dev test-hyperliquid    - Test Hyperliquid leaderboard monitoring');
       console.log('  npm run dev status              - Show bot status');
       console.log('  npm run dev help                - Show this help');
+      console.log('');
+      console.log('How it works:');
+      console.log('  1. Fetches Hyperliquid leaderboard for top trader addresses');
+      console.log('  2. Monitors their positions every 30 seconds via Hyperliquid API');  
+      console.log('  3. Alerts on new 30x+ leverage long positions over $100k');
+      console.log('');
+      console.log('Requirements:');
+      console.log('  • Internet connection to access Hyperliquid APIs');
+      console.log('  • WHALE_ALERT_API_KEY in .env (optional, for additional whale alerts)');
+      console.log('');
+      console.log('Focus: 30x+ leverage long positions over $100k on Hyperliquid only');
       process.exit(0);
       break;
       
     default:
-      // Start the bot normally
       await bot.start();
       break;
   }
 }
 
-// Start the bot
 runCommand().catch((error) => {
   logger.error('💥 Fatal error:', error);
   process.exit(1);
